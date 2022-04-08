@@ -25,7 +25,7 @@ function supplementurls(issueurl)
 end
 
 
-function savesupplement(url; bytes=15_000_000, # QE ignores --range anyway ...
+function savesupplement(url; maxbytes=1_500_000_000, # QE ignores --range anyway ...
                         cache=replace(url,r".+index.php" => ".")*".zip", refresh=false)
   cachepath = splitpath(cache)[1:(end-1)] |> joinpath |> normpath
   mkpath(cachepath)
@@ -33,17 +33,43 @@ function savesupplement(url; bytes=15_000_000, # QE ignores --range anyway ...
     @warn cache*" exists, not redownloading."
     return(url=url, zipfile=cache)
   end
-  cmd = `curl -I -o $cache --range -$bytes $url`
-  println(cmd)
-
+  sizecmd=`curl -s -L -I $url`
+  txt=Base.read(sizecmd) |> String
+  size=parse(Int,match(r"Content-Length: (\d+)",txt).captures[1])
+  if (size>maxbytes)
+    @warn "$url supplement is $size, skipping"
+    Base.run(`touch $cache`)
+    return(url=url,zipfile=cache)
+  end
+  cmd = `curl -o $cache -L $url`
   Base.run(cmd)
-
   return(url=url, zipfile=cache)
 end
 
 for issue ∈ issues
-  if match(r"20[12]",text(issue))!=nothing
-    urls = articleurls(issue)
-    res = [savesupplement(url) for url ∈ urls]
+  # only download 2020 and later
+  length(eachmatch(Cascadia.textRegexSelector(r"202\d"), issue)) > 0 || continue
+  urls = supplementurls(issue.attributes["href"])
+  res = [savesupplement(url) for url ∈ urls]
+end
+
+jlfiles=[]
+for (root, dir, files) ∈ walkdir("./qe")
+  for file ∈ files
+    filepath = joinpath(root,file)
+    try
+      out = read(Cmd(`unzip -l $filepath`,ignorestatus=true), String)
+      em = eachmatch(r"(\.[a-zA-Z0-9_]+)\n",out)
+      for m ∈ em
+        if (m.captures[1] == ".jl")
+          push!(jlfiles,filepath)
+          println("yes .jl file in $filepath")
+          break
+        end
+      end
+      println("no .jl file in $filepath")
+    catch
+      println("Failed to read $filepath")
+    end
   end
 end

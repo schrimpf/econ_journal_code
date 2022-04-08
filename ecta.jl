@@ -49,7 +49,12 @@ function savesupplement(url; bytes=15_000_000, cache="."*url*".zip", refresh=fal
   # Run an extra request if needed as a work around
   cmd = `curl -I --range -$bytes -L $zipurl`
   out = read(cmd, String)
-  bytesremote = parse(Int,match(r"content-length: (\d+)", out).captures[1])
+  bytesremote =
+    try
+      parse(Int,match(r"content-length: (\d+)", out).captures[1])
+    catch
+      0
+    end
   if (bytesremote==bytes)
     Base.run(cmd)
   end
@@ -67,6 +72,8 @@ for issue ∈ issues
   end
 end
 
+
+jlfiles=[]
 for (root, dir, files) ∈ walkdir("./publications")
   for file ∈ files
     filepath = joinpath(root,file)
@@ -75,6 +82,7 @@ for (root, dir, files) ∈ walkdir("./publications")
       em = eachmatch(r"(\.[a-zA-Z0-9_]+)\n",out)
       for m ∈ em
         if (m.captures[1] == ".jl")
+          push!(jlfiles,filepath)
           println("yes .jl file in $filepath")
           break
         end
